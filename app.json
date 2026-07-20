@@ -24,6 +24,13 @@
         "usesNonExemptEncryption": false
       }
     },
+    "android": {
+      "package": "app.spliit.spliitmobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#FFFFFF"
+      }
+    },
     "plugins": [
       "expo-localization"
     ]

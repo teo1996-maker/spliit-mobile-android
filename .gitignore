@@ -22,3 +22,10 @@ expo-env.d.ts
 
 ios/
 android/
+spliit-release.apk
+
+# Signing secrets — never commit
+*.keystore
+keystore-password.txt
+*.apk
+*.aab

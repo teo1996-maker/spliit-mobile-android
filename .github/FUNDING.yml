@@ -1,0 +1,4 @@
+# Donazioni tramite link custom (Revolut).
+# Se il repo è ospitato su una piattaforma che supporta FUNDING.yml,
+# mostrerà un pulsante "Sponsor" che punta a questo link.
+custom: ["https://revolut.me/costateo"]
