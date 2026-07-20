@@ -6,6 +6,7 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context'
 import DeviceInfo from 'react-native-device-info'
 import { cn } from '@/utils/cn'
 import { TrackScreen } from '@/components/analytics'
+import { ClientCertSection } from '@/components/client-cert-section'
 import { SettingsForm } from '@/components/settings-form'
 import { useSettings } from '@/utils/settings'
 
@@ -74,6 +75,7 @@ export default function AboutScreen() {
                   }}
                 />
               )}
+              <ClientCertSection />
             </View>
             <View className="flex-1" />
             <Text className="mt-12 text-center text-slate-500">

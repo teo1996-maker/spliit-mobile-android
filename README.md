@@ -15,6 +15,30 @@ run on Android, entirely from the command line (no Android Studio required).
 - Native Android project generated via `expo prebuild`
 - Release builds signed with a dedicated keystore (kept out of version control)
 - CLI build scripts in `scripts/`
+- **Client certificate (mTLS) support** for self-hosted instances behind
+  Cloudflare mTLS or any reverse proxy requiring a client certificate
+
+## Self-hosted instances and mTLS
+
+The app talks to the official instance at `https://spliit.app/` by default.
+In *About → Settings* you can point it to any self-hosted Spliit instance
+by changing the **Base URL**.
+
+If your instance requires a **client certificate** (e.g. [Cloudflare mTLS](https://developers.cloudflare.com/ssl/client-certificates/)),
+import a PKCS#12 (`.p12`/`.pfx`) file from *About → Client certificate (mTLS)*.
+The certificate is stored in the app's private storage and presented
+automatically whenever the server requests one during the TLS handshake.
+Standard CA validation of the server is unchanged.
+
+To convert a Cloudflare client certificate (PEM cert + private key) to PKCS#12:
+
+```bash
+openssl pkcs12 -export -out client.p12 -in client.pem -inkey client-key.pem
+```
+
+This is implemented by a local Expo native module (`modules/spliit-mtls`,
+Android only) that plugs a custom OkHttp client factory into React Native's
+networking layer, so every app request (tRPC/fetch) goes through it.
 
 ## Stack
 
@@ -75,6 +99,8 @@ npx expo start                 # start Metro, then open the app
 ## Roadmap
 
 - [x] Build and run on Android from the CLI
+- [x] Custom base URL for self-hosted instances (upstream feature)
+- [x] Client certificate (mTLS) support for Cloudflare-protected instances
 - [ ] Screen-by-screen functional testing on Android
 - [ ] Android-specific UI polish (menus, segmented controls, back button, keyboard)
 - [ ] Dark mode

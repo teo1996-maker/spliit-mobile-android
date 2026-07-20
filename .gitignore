@@ -20,8 +20,9 @@ web-build/
 expo-env.d.ts
 # @end expo-cli
 
-ios/
-android/
+/ios/
+/android/
+modules/*/android/build/
 spliit-release.apk
 
 # Signing secrets — never commit
