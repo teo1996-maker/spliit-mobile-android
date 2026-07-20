@@ -18,7 +18,7 @@ import { Button, Pressable, Text, View } from 'react-native'
 
 export default function AddGroupByUrlModal() {
   const [url, setUrl] = useState('')
-  const [hasError, setHasError] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const utils = trpc.useUtils()
   const router = useRouter()
   const [isPending, setIsPending] = useState(false)
@@ -46,7 +46,7 @@ export default function AddGroupByUrlModal() {
           <FormGroup>
             <Label>Group URL</Label>
             <TextInput
-              hasError={hasError}
+              hasError={!!error}
               keyboardType="url"
               autoComplete="url"
               autoCorrect={false}
@@ -55,9 +55,7 @@ export default function AddGroupByUrlModal() {
               value={url}
               onChangeText={(text) => setUrl(text)}
             />
-            {hasError && (
-              <ErrorMessage>The URL is not a valid group URL.</ErrorMessage>
-            )}
+            {error && <ErrorMessage>{error}</ErrorMessage>}
             <HelpText>
               If a group was shared with you, you can paste its URL here to add
               it to your list.
@@ -69,9 +67,24 @@ export default function AddGroupByUrlModal() {
             disabled={isPending}
             onPress={async () => {
               setIsPending(true)
-              const groupId = extractGroupId(url)
-              if (groupId) {
-                const data = await utils.groups.get.fetch({ groupId })
+              setError(null)
+              try {
+                const parsed = parseGroupUrl(url)
+                if (!parsed) {
+                  setError('The URL is not a valid group URL.')
+                  return
+                }
+                if (parsed.origin !== new URL(baseUrl).origin) {
+                  setError(
+                    `This group is hosted on ${parsed.origin}, but the app ` +
+                      `is configured for ${new URL(baseUrl).origin}. Update ` +
+                      'the Base URL in the settings (About tab) first.',
+                  )
+                  return
+                }
+                const data = await utils.groups.get.fetch({
+                  groupId: parsed.groupId,
+                })
                 if (data.group) {
                   await addRecentGroup({
                     groupId: data.group.id,
@@ -79,12 +92,17 @@ export default function AddGroupByUrlModal() {
                   })
                   router.back()
                 } else {
-                  setHasError(true)
+                  setError('No group found at this URL.')
                 }
-              } else {
-                setHasError(true)
+              } catch (e) {
+                setError(
+                  'Could not reach the server. Check the Base URL in the ' +
+                    'settings, your connection, and the client certificate ' +
+                    'if your instance requires one.',
+                )
+              } finally {
+                setIsPending(false)
               }
-              setIsPending(false)
             }}
             className={cn(
               bgBrand,
@@ -101,11 +119,12 @@ export default function AddGroupByUrlModal() {
   )
 }
 
-function extractGroupId(urlString: string) {
+function parseGroupUrl(urlString: string) {
   try {
-    const url = new URL(urlString)
-    const [, groupId] = url.pathname.match(/^\/groups\/([^/]*)/) ?? []
-    return groupId
+    const url = new URL(urlString.trim())
+    const [, groupId] = url.pathname.match(/^\/groups\/([^/]+)/) ?? []
+    if (!groupId) return null
+    return { groupId, origin: url.origin }
   } catch {
     return null
   }

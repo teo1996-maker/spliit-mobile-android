@@ -3,7 +3,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as z from 'zod'
 
 export const settingsSchema = z.object({
-  baseUrl: z.string().default("https://spliit.app/"),
+  baseUrl: z
+    .string()
+    .trim()
+    .url()
+    .default("https://spliit.app/")
+    // The API URL is built as `${baseUrl}api/trpc`: a trailing slash is required.
+    .transform((url) => (url.endsWith("/") ? url : `${url}/`)),
 })
 
 export type Settings = z.infer<typeof settingsSchema>
