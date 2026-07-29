@@ -1,5 +1,5 @@
 import { TrackScreen } from '@/components/analytics'
-import { BRAND_COLOR } from '@/utils/colors'
+import { BRAND_COLOR, SECONDARY_BRAND_COLOR } from '@/utils/colors'
 import { formatCurrency } from '@/utils/formatCurrency'
 import {
   getMonthlySpending,
@@ -8,8 +8,8 @@ import {
   getSummary,
 } from '@/utils/expenseStats'
 import { trpc } from '@/utils/trpc'
-import { useGlobalSearchParams } from 'expo-router'
-import { useMemo } from 'react'
+import { useFocusEffect, useGlobalSearchParams } from 'expo-router'
+import { useCallback, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Dimensions,
@@ -54,10 +54,19 @@ function Analytics({
   group: NonNullable<AppRouterOutput['groups']['get']['group']>
 }) {
   // Fetch every expense in one shot for accurate aggregates.
-  const { data, isInitialLoading } = trpc.groups.expenses.list.useQuery({
-    groupId: group.id,
-    limit: 100000,
-  })
+  const { data, isInitialLoading, refetch } =
+    trpc.groups.expenses.list.useQuery({
+      groupId: group.id,
+      limit: 100000,
+    })
+
+  // The tab stays mounted in the background, so refetch whenever it regains
+  // focus to reflect expenses added/edited/deleted from other tabs.
+  useFocusEffect(
+    useCallback(() => {
+      refetch()
+    }, [refetch]),
+  )
 
   const expenses = useMemo(() => data?.expenses ?? [], [data])
 
@@ -65,6 +74,8 @@ function Analytics({
   const monthly = useMemo(() => getMonthlySpending(expenses, 6), [expenses])
   const byCategory = useMemo(() => getSpendingByCategory(expenses), [expenses])
   const byPayer = useMemo(() => getSpendingByPayer(expenses), [expenses])
+
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(null)
 
   const currency = group.currency
   const fmt = (cents: number) => formatCurrency(currency, cents / 100)
@@ -101,10 +112,11 @@ function Analytics({
     )
   }
 
-  const barData = monthly.map((m) => ({
+  const barData = monthly.map((m, i) => ({
     value: Math.round(m.value / 100),
     label: m.label,
-    frontColor: BRAND_COLOR,
+    frontColor: selectedMonth === i ? SECONDARY_BRAND_COLOR : BRAND_COLOR,
+    onPress: () => setSelectedMonth((prev) => (prev === i ? null : i)),
   }))
 
   const categoryTotal = byCategory.reduce((sum, c) => sum + c.value, 0)
@@ -136,7 +148,29 @@ function Analytics({
 
           {/* Monthly spending */}
           <Section title="Spending per month" subtitle={`Last 6 months, in ${currency}`}>
+            <View className="mb-3 min-h-[40px]">
+              {selectedMonth !== null && monthly[selectedMonth] ? (
+                <View className="bg-slate-50 border border-slate-100 rounded-lg px-3 py-2 flex-row justify-between items-center">
+                  <Text className="text-slate-600">
+                    {monthly[selectedMonth].label}
+                  </Text>
+                  <Text
+                    className="font-bold text-lg"
+                    style={{ color: SECONDARY_BRAND_COLOR }}
+                  >
+                    {fmt(monthly[selectedMonth].value)}
+                  </Text>
+                </View>
+              ) : (
+                <Text className="text-slate-400 text-sm">
+                  Tap a bar to see that month’s total.
+                </Text>
+              )}
+            </View>
             <BarChart
+              key={`bar-${selectedMonth}-${monthly
+                .map((m) => m.value)
+                .join('_')}`}
               data={barData}
               width={chartWidth}
               height={180}
@@ -157,7 +191,6 @@ function Analytics({
               yAxisTextStyle={{ color: '#94a3b8', fontSize: 10 }}
               xAxisLabelTextStyle={{ color: '#64748b', fontSize: 11 }}
               rulerColor="#e2e8f0"
-              isAnimated
             />
           </Section>
 
@@ -165,6 +198,7 @@ function Analytics({
           <Section title="Spending by category">
             <View className="items-center mb-4">
               <PieChart
+                key={`pie-${pieData.map((d) => d.value).join('_')}`}
                 data={pieData}
                 donut
                 radius={90}
