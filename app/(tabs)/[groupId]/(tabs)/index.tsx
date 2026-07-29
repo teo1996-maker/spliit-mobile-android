@@ -8,7 +8,7 @@ import { FontAwesome6 } from '@expo/vector-icons'
 import { MenuView } from '@react-native-menu/menu'
 import dayjs, { Dayjs } from 'dayjs'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { Fragment, useEffect } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import {
   ActivityIndicator,
   Platform,
@@ -16,6 +16,7 @@ import {
   SafeAreaView,
   SectionList,
   Text,
+  TextInput,
   View,
 } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
@@ -43,6 +44,7 @@ export default function GroupScreen() {
 }
 
 const PAGE_SIZE = 20
+const ALL_MONTHS = '__all__'
 
 function ExpenseList({
   group,
@@ -50,18 +52,68 @@ function ExpenseList({
   group: NonNullable<AppRouterOutput['groups']['get']['group']>
 }) {
   const router = useRouter()
-  const { data, fetchNextPage, refetch, isInitialLoading } =
+
+  const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [monthKey, setMonthKey] = useState<string | null>(null)
+
+  // Debounce the title search so we don't hit the API on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
+  const { data, fetchNextPage, isFetchingNextPage, isInitialLoading } =
     trpc.groups.expenses.list.useInfiniteQuery(
-      { groupId: group.id, limit: PAGE_SIZE },
+      {
+        groupId: group.id,
+        limit: PAGE_SIZE,
+        filter: debouncedSearch || undefined,
+      },
       { getNextPageParam: ({ nextCursor }) => nextCursor }
     )
   const { mutateAsync: deleteAsync } = trpc.groups.expenses.delete.useMutation()
   const utils = trpc.useUtils()
 
-  const expenses = data?.pages.flatMap((page) => page.expenses)
+  const expenses = useMemo(
+    () => data?.pages.flatMap((page) => page.expenses) ?? [],
+    [data]
+  )
   const hasMore = data?.pages.at(-1)?.hasMore ?? false
 
-  const groups = getGroupedExpensesByDate(expenses ?? [])
+  // Month filtering is done client-side, so when a month is selected we need
+  // every matching expense loaded (expenses are ordered newest-first).
+  useEffect(() => {
+    if (monthKey && hasMore && !isFetchingNextPage) fetchNextPage()
+  }, [monthKey, hasMore, isFetchingNextPage, expenses.length, fetchNextPage])
+
+  // Distinct months present in the loaded expenses (newest first).
+  const monthOptions = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const e of expenses) {
+      const d = dayjs(e.expenseDate)
+      const key = d.format('YYYY-MM')
+      if (!seen.has(key)) seen.set(key, d.format('MMMM YYYY'))
+    }
+    return Array.from(seen, ([key, label]) => ({ key, label }))
+  }, [expenses])
+
+  const filteredExpenses = useMemo(
+    () =>
+      monthKey
+        ? expenses.filter((e) => dayjs(e.expenseDate).format('YYYY-MM') === monthKey)
+        : expenses,
+    [expenses, monthKey]
+  )
+
+  const selectedMonthLabel = monthKey
+    ? monthOptions.find((m) => m.key === monthKey)?.label ??
+      dayjs(`${monthKey}-01`).format('MMMM YYYY')
+    : 'All months'
+
+  const hasFilters = debouncedSearch !== '' || monthKey !== null
+
+  const groups = getGroupedExpensesByDate(filteredExpenses)
   const sections = Object.entries(groups).map(([id, expenses]) => ({
     title: match(id)
       .with('upcoming', () => 'Upcoming')
@@ -75,7 +127,70 @@ function ExpenseList({
     data: expenses,
   }))
 
-  sections.unshift({ title: 'HEADER', data: [] })
+  const addExpense = () =>
+    router.push({
+      pathname: '/[groupId]/create-expense',
+      params: { groupId: group.id },
+    })
+
+  const filterControls = (
+    <View className="px-4 pt-4 mt-2 bg-white">
+      <View className="flex-row justify-between items-baseline mb-3">
+        <Text className="font-bold text-lg">Expenses</Text>
+        <Pressable className="active:opacity-60" onPress={addExpense}>
+          <Text className={cn(textBrand, 'text-lg')}>Add expense</Text>
+        </Pressable>
+      </View>
+      <View className="flex-row gap-2 mb-2">
+        <View className="flex-1 flex-row items-center bg-slate-100 rounded-lg px-3">
+          <FontAwesome6 name="magnifying-glass" size={14} color="#64748b" />
+          <TextInput
+            className="flex-1 py-2 pl-2 text-base"
+            placeholder="Search by title"
+            placeholderTextColor="#94a3b8"
+            value={search}
+            onChangeText={setSearch}
+            autoCorrect={false}
+          />
+          {search !== '' && (
+            <Pressable
+              className="p-1 active:opacity-60"
+              onPress={() => setSearch('')}
+            >
+              <FontAwesome6 name="xmark" size={14} color="#64748b" />
+            </Pressable>
+          )}
+        </View>
+        <MenuView
+          title="Filter by month"
+          onPressAction={({ nativeEvent }) =>
+            setMonthKey(
+              nativeEvent.event === ALL_MONTHS ? null : nativeEvent.event
+            )
+          }
+          actions={[
+            { id: ALL_MONTHS, title: 'All months' },
+            ...monthOptions.map((m) => ({ id: m.key, title: m.label })),
+          ]}
+          shouldOpenOnLongPress={false}
+        >
+          <View className="flex-row items-center bg-slate-100 rounded-lg px-3 py-2 max-w-[160px]">
+            <FontAwesome6 name="calendar" size={13} color="#64748b" />
+            <Text
+              className={cn(
+                'ml-2 mr-1 text-sm',
+                monthKey ? textBrand : 'text-slate-600'
+              )}
+              numberOfLines={1}
+            >
+              {selectedMonthLabel}
+            </Text>
+            <FontAwesome6 name="chevron-down" size={10} color="#64748b" />
+          </View>
+        </MenuView>
+      </View>
+    </View>
+  )
 
   return (
     <SafeAreaProvider>
@@ -85,7 +200,7 @@ function ExpenseList({
             <ActivityIndicator size="large" />
             <Text className="text-slate-700">Loading group expensees</Text>
           </View>
-        ) : sections.length === 1 ? (
+        ) : !hasFilters && expenses.length === 0 ? (
           <View className="h-full items-center justify-center">
             <Text className="mb-2 font-bold text-lg text-slate-950">
               Your group is ready!
@@ -98,12 +213,7 @@ function ExpenseList({
                 bgBrand,
                 'flex-row justify-center rounded-lg px-4 py-2 active:opacity-60'
               )}
-              onPress={() =>
-                router.push({
-                  pathname: '/(tabs)/[groupId]/create-expense',
-                  params: { groupId: group.id },
-                })
-              }
+              onPress={addExpense}
             >
               <Text className="text-white text-lg font-semibold">
                 Add expense
@@ -114,6 +224,16 @@ function ExpenseList({
           <SectionList
             sections={sections}
             keyExtractor={(expense) => expense.id}
+            ListHeaderComponent={filterControls}
+            ListEmptyComponent={
+              <View className="items-center px-8 py-16">
+                <Text className="text-slate-500 text-center">
+                  {monthKey && isFetchingNextPage
+                    ? 'Loading…'
+                    : 'No expenses match your filters.'}
+                </Text>
+              </View>
+            }
             renderItem={({ item: expense }) => (
               <View className="bg-slate-100 rounded-md mb-2 mx-4 flex-row">
                 <Pressable
@@ -202,34 +322,15 @@ function ExpenseList({
                 </MenuView>
               </View>
             )}
-            renderSectionHeader={({ section: { title } }) =>
-              title === 'HEADER' ? (
-                <View className="px-4 pt-4 mt-2 bg-white flex-row justify-between items-baseline">
-                  <Text className="font-bold text-lg">Expenses</Text>
-                  <Pressable
-                    className="active:opacity-60"
-                    onPress={() =>
-                      router.push({
-                        pathname: '/[groupId]/create-expense',
-                        params: { groupId: group.id },
-                      })
-                    }
-                  >
-                    <Text className={cn(textBrand, 'text-lg')}>
-                      Add expense
-                    </Text>
-                  </Pressable>
-                </View>
-              ) : (
-                <View className="px-4 pt-4 pb-2 bg-white">
-                  <Text className="font-bold text-slate-500 text-xs uppercase">
-                    {title}
-                  </Text>
-                </View>
-              )
-            }
+            renderSectionHeader={({ section: { title } }) => (
+              <View className="px-4 pt-4 pb-2 bg-white">
+                <Text className="font-bold text-slate-500 text-xs uppercase">
+                  {title}
+                </Text>
+              </View>
+            )}
             onEndReached={() => {
-              if (hasMore) fetchNextPage()
+              if (hasMore && !monthKey) fetchNextPage()
             }}
           />
         )}
