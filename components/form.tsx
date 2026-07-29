@@ -109,6 +109,7 @@ export function AmountInput({
       hasError={hasError}
       inputMode="decimal"
       keyboardType="decimal-pad"
+      selectTextOnFocus
       onChangeText={(text) => {
         onChangeText?.(text)
         setTextValue(text)
