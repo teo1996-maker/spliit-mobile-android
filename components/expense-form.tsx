@@ -12,6 +12,7 @@ import {
   TextInput,
 } from '@/components/form'
 import { Expense, ExpenseDetails, Group, trpc } from '@/utils/trpc'
+import { ExpenseDefaults } from '@/utils/expenseDefaults'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Controller, useForm } from 'react-hook-form'
 import { Pressable, Text, View } from 'react-native'
@@ -29,6 +30,7 @@ export function ExpenseForm({
   expense,
   group,
   reimbursementParams,
+  defaults,
   onSave,
 }: {
   expense: ExpenseDetails | null
@@ -38,10 +40,23 @@ export function ExpenseForm({
     paidFor: string
     amount: number
   }
+  defaults?: ExpenseDefaults | null
   group: Group
   onSave: (expenseFormValues: ExpenseFormValues) => Promise<void>
 }) {
   const { data: categoriesData } = trpc.categories.list.useQuery()
+
+  // Keep only defaults that still reference participants present in the group,
+  // so removed members don't leak into a fresh form.
+  const validParticipantIds = new Set(group.participants.map((p) => p.id))
+  const defaultPaidBy =
+    defaults?.paidBy && validParticipantIds.has(defaults.paidBy)
+      ? defaults.paidBy
+      : undefined
+  const defaultPaidFor =
+    defaults?.paidFor?.filter((p) => validParticipantIds.has(p.participant)) ??
+    []
+  const defaultSplitMode = defaults?.splitMode ?? 'EVENLY'
 
   const {
     control,
@@ -85,9 +100,9 @@ export function ExpenseForm({
           expenseDate: new Date(),
           amount: 0,
           category: 0,
-          paidBy: undefined,
-          paidFor: [],
-          splitMode: 'EVENLY',
+          paidBy: defaultPaidBy,
+          paidFor: defaultPaidFor,
+          splitMode: defaultSplitMode,
           saveDefaultSplittingOptions: false,
           isReimbursement: false,
           documents: [],
