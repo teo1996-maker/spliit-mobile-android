@@ -32,6 +32,17 @@ export default function TabLayout() {
             ),
           }}
         />
+        <Tabs.Screen
+          name="analytics"
+          options={{
+            title: 'Analytics',
+            headerShown: false,
+            tabBarActiveTintColor: BRAND_COLOR,
+            tabBarIcon: ({ color }) => (
+              <FontAwesome6 name="chart-pie" size={28} color={color} />
+            ),
+          }}
+        />
       </Tabs>
     </>
   )
