@@ -6,7 +6,7 @@ import { updateRecentGroup } from '@/utils/recentGroups'
 import { Expense, trpc } from '@/utils/trpc'
 import { FontAwesome6 } from '@expo/vector-icons'
 import { MenuView } from '@react-native-menu/menu'
-import dayjs, { Dayjs } from 'dayjs'
+import dayjs from 'dayjs'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import {
@@ -113,19 +113,9 @@ function ExpenseList({
 
   const hasFilters = debouncedSearch !== '' || monthKey !== null
 
-  const groups = getGroupedExpensesByDate(filteredExpenses)
-  const sections = Object.entries(groups).map(([id, expenses]) => ({
-    title: match(id)
-      .with('upcoming', () => 'Upcoming')
-      .with('thisWeek', () => 'This week')
-      .with('earlierThisMonth', () => 'Earlier this month')
-      .with('lastMonth', () => 'Last month')
-      .with('earlierThisYear', () => 'Earlier this year')
-      .with('lastYear', () => 'Last year')
-      .with('older', () => 'Older')
-      .otherwise(() => id),
-    data: expenses,
-  }))
+  // Group expenses into whole-month blocks, newest month first, e.g.
+  // "July 2026", "June 2026". Expenses are already ordered newest-first.
+  const sections = getMonthlySections(filteredExpenses)
 
   const addExpense = () =>
     router.push({
@@ -339,40 +329,17 @@ function ExpenseList({
   )
 }
 
-function getGroupedExpensesByDate(expenses: Expense[]) {
-  const today = dayjs()
-  return expenses.reduce((result: { [key: string]: Expense[] }, expense) => {
-    const expenseGroup = getExpenseGroup(dayjs(expense.expenseDate), today)
-    result[expenseGroup] = result[expenseGroup] ?? []
-    result[expenseGroup].push(expense)
-    return result
-  }, {})
-}
-
-function getExpenseGroup(date: Dayjs, today: Dayjs) {
-  if (today.isBefore(date)) {
-    return EXPENSE_GROUPS.UPCOMING
-  } else if (today.isSame(date, 'week')) {
-    return EXPENSE_GROUPS.THIS_WEEK
-  } else if (today.isSame(date, 'month')) {
-    return EXPENSE_GROUPS.EARLIER_THIS_MONTH
-  } else if (today.subtract(1, 'month').isSame(date, 'month')) {
-    return EXPENSE_GROUPS.LAST_MONTH
-  } else if (today.isSame(date, 'year')) {
-    return EXPENSE_GROUPS.EARLIER_THIS_YEAR
-  } else if (today.subtract(1, 'year').isSame(date, 'year')) {
-    return EXPENSE_GROUPS.LAST_YEAR
-  } else {
-    return EXPENSE_GROUPS.OLDER
+function getMonthlySections(expenses: Expense[]) {
+  // Preserve the newest-first order of the input while grouping by month.
+  const byMonth = new Map<string, Expense[]>()
+  for (const expense of expenses) {
+    const key = dayjs(expense.expenseDate).format('YYYY-MM')
+    const bucket = byMonth.get(key)
+    if (bucket) bucket.push(expense)
+    else byMonth.set(key, [expense])
   }
-}
-
-const EXPENSE_GROUPS = {
-  UPCOMING: 'upcoming',
-  THIS_WEEK: 'thisWeek',
-  EARLIER_THIS_MONTH: 'earlierThisMonth',
-  LAST_MONTH: 'lastMonth',
-  EARLIER_THIS_YEAR: 'earlierThisYear',
-  LAST_YEAR: 'lastYear',
-  OLDER: 'older',
+  return Array.from(byMonth, ([key, data]) => ({
+    title: dayjs(`${key}-01`).format('MMMM YYYY'),
+    data,
+  }))
 }
