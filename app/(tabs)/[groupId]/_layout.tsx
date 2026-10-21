@@ -39,14 +39,23 @@ export default function GroupLayout() {
                       params: { groupId },
                     }),
                   )
-                  .with('share', () =>
-                    Share.share({
-                      title: `Join the group ${
-                        data?.group?.name ?? ''
-                      } on Spliit!`,
-                      url: `${baseUrl}groups/${groupId}`,
-                    }),
-                  )
+                  .with('share', () => {
+                    // Normalize the base URL so a missing trailing slash
+                    // doesn't produce e.g. "https://spliit.appgroups/...".
+                    const groupUrl = `${baseUrl.trim().replace(/\/+$/, '')}/groups/${encodeURIComponent(groupId)}`
+                    const title = `Join the group ${
+                      data?.group?.name ?? ''
+                    } on Spliit!`
+                    // Android ignores `url` and only shares `message`, so the
+                    // link must be in the message. On iOS, passing both would
+                    // duplicate the link, so keep `url` separate there.
+                    return Share.share(
+                      Platform.OS === 'ios'
+                        ? { title, message: title, url: groupUrl }
+                        : { title, message: `${title}\n${groupUrl}` },
+                      { dialogTitle: title, subject: title },
+                    )
+                  })
               }}
               actions={[
                 {
